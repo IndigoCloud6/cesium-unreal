@@ -25,6 +25,8 @@
 #include "CesiumIonClient/Connection.h"
 #include "CesiumLifetime.h"
 #include "CesiumRasterOverlay.h"
+#include "CesiumWebMapServiceRasterOverlay.h"
+#include "CesiumTileMapServiceRasterOverlay.h"
 #include "CesiumRuntime.h"
 #include "CesiumRuntimeSettings.h"
 #include "CesiumTextureUtility.h"
@@ -51,6 +53,9 @@
 #include <glm/gtc/matrix_inverse.hpp>
 #include <memory>
 #include <spdlog/spdlog.h>
+#include "Serialization/JsonWriter.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonReader.h"
 
 FCesium3DTilesetLoadFailure OnCesium3DTilesetLoadFailure{};
 
@@ -2291,3 +2296,343 @@ void ACesium3DTileset::RuntimeSettingsChanged(
   }
 }
 #endif
+
+FString ACesium3DTileset::GetProperties() {
+  TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
+  // Source
+  JsonObject->SetStringField(TEXT("Url"), this->Url);
+  // Level
+  JsonObject->SetNumberField(
+      TEXT("MaximumScreenSpaceError"),
+      this->MaximumScreenSpaceError);
+  // Loading
+  JsonObject->SetBoolField(TEXT("PreloadSiblings"), this->PreloadSiblings);
+  JsonObject->SetBoolField(TEXT("PreloadAncestors"), this->PreloadAncestors);
+  JsonObject->SetBoolField(TEXT("ForbidHoles"), this->ForbidHoles);
+  JsonObject->SetNumberField(
+      TEXT("MaximumSimultaneousTileLoads"),
+      this->MaximumSimultaneousTileLoads);
+  JsonObject->SetNumberField(
+      TEXT("MaximumCachedBytes"),
+      this->MaximumCachedBytes);
+  JsonObject->SetNumberField(
+      TEXT("LoadingDescendantLimit"),
+      this->LoadingDescendantLimit);
+  // Culling
+  JsonObject->SetBoolField(
+      TEXT("EnableFrustumCulling"),
+      this->EnableFrustumCulling);
+  JsonObject->SetBoolField(TEXT("EnableFogCulling"), this->EnableFogCulling);
+  JsonObject->SetBoolField(
+      TEXT("EnforceCulledScreenSpaceError"),
+      this->EnforceCulledScreenSpaceError);
+  JsonObject->SetNumberField(
+      TEXT("CulledScreenSpaceError"),
+      this->CulledScreenSpaceError);
+  // Rendering
+  JsonObject->SetBoolField(TEXT("UseLodTransitions"), this->UseLodTransitions);
+  JsonObject->SetBoolField(
+      TEXT("AlwaysIncludeTangents"),
+      this->AlwaysIncludeTangents);
+  JsonObject->SetBoolField(
+      TEXT("GenerateSmoothNormals"),
+      this->GenerateSmoothNormals);
+  JsonObject->SetBoolField(
+      TEXT("IgnoreKhrMaterialsUnlit"),
+      this->IgnoreKhrMaterialsUnlit);
+  // Physic
+  JsonObject->SetBoolField(
+      TEXT("CreatePhysicsMeshes"),
+      this->CreatePhysicsMeshes);
+  JsonObject->SetBoolField(
+      TEXT("CreateNavCollision"),
+      this->CreateNavCollision);
+  FString OutputString;
+  TSharedRef<TJsonWriter<>> Writer =
+      TJsonWriterFactory<>::Create(&OutputString);
+  if (FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer)) {
+    return OutputString;
+  }
+  return TEXT("");
+}
+
+bool ACesium3DTileset::DestroyOverlays(const FName ID) {
+  TArray<UCesiumRasterOverlay*> rasterOverlays;
+  this->GetComponents<UCesiumRasterOverlay>(rasterOverlays);
+  for (UCesiumRasterOverlay* pOverlay : rasterOverlays) {
+    if (pOverlay->ComponentTags.Contains(ID)) {
+      pOverlay->DestroyComponent();
+      return true;
+    }
+  }
+  return false;
+}
+
+bool ACesium3DTileset::DeactivateOverlays(const FName ID) {
+  TArray<UCesiumRasterOverlay*> rasterOverlays;
+  this->GetComponents<UCesiumRasterOverlay>(rasterOverlays);
+  for (UCesiumRasterOverlay* pOverlay : rasterOverlays) {
+    if (pOverlay->ComponentTags.Contains(ID)) {
+      pOverlay->Deactivate();
+      return true;
+    }
+  }
+  return false;
+}
+
+bool ACesium3DTileset::ActivateOverlays(const FName ID) {
+  TArray<UCesiumRasterOverlay*> rasterOverlays;
+  this->GetComponents<UCesiumRasterOverlay>(rasterOverlays);
+  for (UCesiumRasterOverlay* pOverlay : rasterOverlays) {
+    if (pOverlay->ComponentTags.Contains(ID)) {
+      pOverlay->Activate(true);
+      return true;
+    }
+  }
+  return false;
+}
+
+UCesiumRasterOverlay* ACesium3DTileset::GetOverlayByID(const FString& ID) {
+  FName MyID = FName("id=" + ID);
+  TArray<UCesiumRasterOverlay*> rasterOverlays;
+  this->GetComponents<UCesiumRasterOverlay>(rasterOverlays);
+  for (UCesiumRasterOverlay* pOverlay : rasterOverlays) {
+    if (pOverlay->ComponentTags.Contains(MyID)) {
+      return pOverlay;
+    }
+  }
+  return NULL;
+}
+
+void ACesium3DTileset::RefreshAllOverlay() {
+  TArray<UCesiumRasterOverlay*> rasterOverlays;
+  this->GetComponents<UCesiumRasterOverlay>(rasterOverlays);
+  for (UCesiumRasterOverlay* pOverlay : rasterOverlays) {
+    pOverlay->Refresh();
+  }
+}
+
+bool ACesium3DTileset::RemoveOverlayByID(const FString& ID) {
+  int num = 0;
+  FName MyID = FName("id=" + ID);
+  TArray<UCesiumRasterOverlay*> rasterOverlays;
+  this->GetComponents<UCesiumRasterOverlay>(rasterOverlays);
+  for (UCesiumRasterOverlay* pOverlay : rasterOverlays) {
+    if (pOverlay->ComponentTags.Contains(MyID)) {
+      pOverlay->RemoveFromTileset();
+      num++;
+    }
+  }
+  if (num > 0) {
+    return true;
+  }
+  return false;
+}
+
+FString ACesium3DTileset::GetAllOverlayID() {
+  TArray<TSharedPtr<FJsonValue>> OverlayArray;
+  TArray<UCesiumRasterOverlay*> rasterOverlays;
+  this->GetComponents<UCesiumRasterOverlay>(rasterOverlays);
+  for (UCesiumRasterOverlay* pOverlay : rasterOverlays) {
+    TSharedPtr<FJsonObject> OverlayObject = MakeShareable(new FJsonObject());
+    for (int TagIndex = 0; TagIndex < pOverlay->ComponentTags.Num();
+         ++TagIndex) {
+      FString tag = pOverlay->ComponentTags[TagIndex].ToString();
+      FString key, value;
+      tag.Split(TEXT("="), &key, &value);
+      OverlayObject->SetStringField(key, value);
+    }
+    OverlayArray.Add(MakeShareable(new FJsonValueObject(OverlayObject)));
+  }
+  FString OutputString;
+  TSharedRef<TJsonWriter<>> Writer =
+      TJsonWriterFactory<>::Create(&OutputString);
+  if (FJsonSerializer::Serialize(OverlayArray, Writer)) {
+    return OutputString;
+  }
+  return TEXT("");
+}
+
+bool ACesium3DTileset::SetProperties(const FString& PropertiesJsonString) {
+  TSharedPtr<FJsonObject> PropertiesJson;
+  TSharedRef<TJsonReader<>> Reader =
+      TJsonReaderFactory<>::Create(PropertiesJsonString);
+  if (FJsonSerializer::Deserialize(Reader, PropertiesJson) &&
+      PropertiesJson.IsValid()) {
+    FString StringValue;
+    bool BoolValue;
+    double DoubleValue;
+    int64 IntAValue;
+    int32 IntBValue;
+    if (PropertiesJson->TryGetStringField(TEXT("Url"), StringValue)) {
+      this->Url = StringValue;
+      if (this->Url.Len() > 0) {
+        this->TilesetSource = ETilesetSource::FromUrl;
+      }
+    }
+    if (PropertiesJson->TryGetNumberField(
+            TEXT("MaximumScreenSpaceError"),
+            DoubleValue)) {
+      this->MaximumScreenSpaceError = DoubleValue;
+    }
+    if (PropertiesJson->TryGetBoolField(TEXT("PreloadSiblings"), BoolValue)) {
+      this->PreloadSiblings = BoolValue;
+    }
+    if (PropertiesJson->TryGetBoolField(TEXT("PreloadAncestors"), BoolValue)) {
+      this->PreloadAncestors = BoolValue;
+    }
+    if (PropertiesJson->TryGetBoolField(TEXT("ForbidHoles"), BoolValue)) {
+      this->ForbidHoles = BoolValue;
+    }
+    if (PropertiesJson->TryGetNumberField(
+            TEXT("MaximumSimultaneousTileLoads"),
+            IntBValue)) {
+      this->MaximumSimultaneousTileLoads = IntBValue;
+    }
+    if (PropertiesJson->TryGetNumberField(
+            TEXT("MaximumCachedBytes"),
+            IntAValue)) {
+      this->MaximumCachedBytes = IntAValue;
+    }
+    if (PropertiesJson->TryGetNumberField(
+            TEXT("LoadingDescendantLimit"),
+            IntBValue)) {
+      this->LoadingDescendantLimit = IntBValue;
+    }
+    if (PropertiesJson->TryGetBoolField(
+            TEXT("EnableFrustumCulling"),
+            BoolValue)) {
+      this->EnableFrustumCulling = BoolValue;
+    }
+    if (PropertiesJson->TryGetBoolField(TEXT("EnableFogCulling"), BoolValue)) {
+      this->EnableFogCulling = BoolValue;
+    }
+    if (PropertiesJson->TryGetBoolField(
+            TEXT("EnforceCulledScreenSpaceError"),
+            BoolValue)) {
+      this->EnforceCulledScreenSpaceError = BoolValue;
+    }
+    if (PropertiesJson->TryGetNumberField(
+            TEXT("CulledScreenSpaceError"),
+            DoubleValue)) {
+      this->CulledScreenSpaceError = DoubleValue;
+    }
+    if (PropertiesJson->TryGetBoolField(TEXT("UseLodTransitions"), BoolValue)) {
+      this->UseLodTransitions = BoolValue;
+    }
+    if (PropertiesJson->TryGetBoolField(
+            TEXT("AlwaysIncludeTangents"),
+            BoolValue)) {
+      this->AlwaysIncludeTangents = BoolValue;
+    }
+    if (PropertiesJson->TryGetBoolField(
+            TEXT("GenerateSmoothNormals"),
+            BoolValue)) {
+      this->GenerateSmoothNormals = BoolValue;
+    }
+    if (PropertiesJson->TryGetBoolField(
+            TEXT("IgnoreKhrMaterialsUnlit"),
+            BoolValue)) {
+      this->IgnoreKhrMaterialsUnlit = BoolValue;
+    }
+    if (PropertiesJson->TryGetBoolField(
+            TEXT("CreatePhysicsMeshes"),
+            BoolValue)) {
+      this->CreatePhysicsMeshes = BoolValue;
+    }
+    if (PropertiesJson->TryGetBoolField(
+            TEXT("CreateNavCollision"),
+            BoolValue)) {
+      this->CreateNavCollision = BoolValue;
+    }
+  }
+  this->RefreshTileset();
+  return true;
+}
+
+bool ACesium3DTileset::UpdateOverlyByID(
+    const FString& ID,
+    const FString& Attributes) {
+  FName MyID = FName("id=" + ID);
+  TArray<UCesiumRasterOverlay*> rasterOverlays;
+  this->GetComponents<UCesiumRasterOverlay>(rasterOverlays);
+  for (UCesiumRasterOverlay* pOverlay : rasterOverlays) {
+    if (pOverlay->ComponentTags.Contains(MyID)) {
+      if (pOverlay->IsA<UCesiumWebMapServiceRasterOverlay>()) {
+        UCesiumWebMapServiceRasterOverlay* pWmsOverlay =
+            Cast<UCesiumWebMapServiceRasterOverlay>(pOverlay);
+        pWmsOverlay->SetAttributes(Attributes);
+        return true;
+      }
+      if (pOverlay->IsA<UCesiumTileMapServiceRasterOverlay>()) {
+        UCesiumTileMapServiceRasterOverlay* pTmsOverlay =
+            Cast<UCesiumTileMapServiceRasterOverlay>(pOverlay);
+        pTmsOverlay->SetAttributes(Attributes);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool ACesium3DTileset::AddWmsServer(
+    const FString& Attributes,
+    TArray<FName> ComponentTags) {
+  TSharedPtr<FJsonObject> AttributesJson;
+  TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Attributes);
+  if (FJsonSerializer::Deserialize(Reader, AttributesJson) &&
+      AttributesJson.IsValid()) {
+    FString BaseUrl;
+    FString Layers;
+    FString MaterialLayerKey;
+    int32 TileHeight = 256;
+    int32 TileWidth = 256;
+    int32 MinimumLevel = 0;
+    int32 MaximumLevel = 18;
+    int32 MaximumSimultaneousTileLoads = 200;
+    double MaximumScreenSpaceError = 2.0;
+    int64 SubTileCacheBytes = 16 * 1024 * 1024;
+    int32 MaximumTextureSize = 2048;
+    if (AttributesJson->TryGetStringField(TEXT("BaseUrl"), BaseUrl) &&
+        AttributesJson->TryGetStringField(TEXT("Layers"), Layers)) {
+      UCesiumWebMapServiceRasterOverlay* WmsServer =
+          Cast<UCesiumWebMapServiceRasterOverlay>(this->AddComponentByClass(
+              UCesiumWebMapServiceRasterOverlay::StaticClass(),
+              false,
+              FTransform::Identity,
+              false));
+      AttributesJson->TryGetStringField(
+          TEXT("MaterialLayerKey"),
+          MaterialLayerKey);
+      AttributesJson->TryGetNumberField(TEXT("TileHeight"), TileHeight);
+      AttributesJson->TryGetNumberField(TEXT("TileWidth"), TileWidth);
+      AttributesJson->TryGetNumberField(TEXT("MinimumLevel"), MinimumLevel);
+      AttributesJson->TryGetNumberField(TEXT("MaximumLevel"), MaximumLevel);
+      AttributesJson->TryGetNumberField(
+          TEXT("MaximumSimultaneousTileLoads"),
+          MaximumSimultaneousTileLoads);
+      AttributesJson->TryGetNumberField(
+          TEXT("MaximumScreenSpaceError"),
+          MaximumScreenSpaceError);
+      AttributesJson->TryGetNumberField(
+          TEXT("SubTileCacheBytes"),
+          SubTileCacheBytes);
+      AttributesJson->TryGetNumberField(
+          TEXT("MaximumTextureSize"),
+          MaximumTextureSize);
+      WmsServer->BaseUrl = BaseUrl;
+      WmsServer->Layers = Layers;
+      WmsServer->MaterialLayerKey = MaterialLayerKey;
+      WmsServer->TileHeight = TileHeight;
+      WmsServer->TileWidth = TileWidth;
+      WmsServer->MinimumLevel = MinimumLevel;
+      WmsServer->SetMaximumSimultaneousTileLoads(MaximumSimultaneousTileLoads);
+      WmsServer->SetMaximumScreenSpaceError(MaximumScreenSpaceError);
+      WmsServer->SetSubTileCacheBytes(SubTileCacheBytes);
+      WmsServer->SetMaximumTextureSize(MaximumTextureSize);
+      WmsServer->ComponentTags = ComponentTags;
+      return true;
+    }
+  }
+  return false;
+}

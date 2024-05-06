@@ -156,6 +156,8 @@ public class CesiumRuntime : ModuleRules
                 "SunPosition",
                 "DeveloperSettings",
                 "UMG",
+                "Json",
+                "JsonUtilities",
                 "Renderer"
             }
         );
