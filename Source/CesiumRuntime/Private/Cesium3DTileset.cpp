@@ -867,7 +867,7 @@ public:
             rasterTile,
             static_cast<CesiumTextureUtility::ReferenceCountedUnrealTexture*>(
                 pMainThreadRendererResources)
-                ->pUnrealTexture,
+                ->getUnrealTexture(),
             translation,
             scale,
             overlayTextureCoordinateID);
@@ -893,7 +893,7 @@ public:
             rasterTile,
             static_cast<CesiumTextureUtility::ReferenceCountedUnrealTexture*>(
                 pMainThreadRendererResources)
-                ->pUnrealTexture);
+                ->getUnrealTexture());
       }
     }
   }
