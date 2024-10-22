@@ -1073,6 +1073,38 @@ public:
   UFUNCTION(BlueprintCallable, Category = "Cesium|Rendering")
   void PauseMovieSequencer();
 
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  FString GetProperties();
+
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  bool SetProperties(const FString& PropertiesJsonString);
+
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  bool DestroyOverlays(const FName ID);
+
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  bool DeactivateOverlays(const FName ID);
+
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  bool ActivateOverlays(const FName ID);
+
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  UCesiumRasterOverlay* GetOverlayByID(const FString& ID);
+
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  bool UpdateOverlyByID(const FString& ID, const FString& Attributes);
+
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  bool AddWmsServer(const FString& Attributes, TArray<FName> ComponentTags);
+
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  void RefreshAllOverlay();
+
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  bool RemoveOverlayByID(const FString& ID);
+
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  FString GetAllOverlayID();
   /**
    * This method is not supposed to be called by clients. It is currently
    * only required by the UnrealResourcePreparer.

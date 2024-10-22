@@ -32,6 +32,15 @@ public:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cesium")
   bool bSpecifyZoomLevels = false;
 
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  FString GetProperties();
+
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  bool SetProperties(const FString& PropertiesJsonString);
+
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  bool SetAttributes(const FString& Attributes);
+
   /**
    * Minimum zoom level.
    */

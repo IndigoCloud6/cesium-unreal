@@ -9,74 +9,74 @@ using System.Reflection;
 
 public class CesiumRuntime : ModuleRules
 {
-    public CesiumRuntime(ReadOnlyTargetRules Target) : base(Target)
-    {
-        PublicIncludePaths.AddRange(
-            new string[] {
+  public CesiumRuntime(ReadOnlyTargetRules Target) : base(Target)
+  {
+    PublicIncludePaths.AddRange(
+        new string[] {
                 Path.Combine(ModuleDirectory, "../ThirdParty/include")
-            }
-        );
+        }
+    );
 
-        PrivateIncludePaths.AddRange(
-            new string[] {
+    PrivateIncludePaths.AddRange(
+        new string[] {
               Path.Combine(GetModuleDirectory("Renderer"), "Private")
-            }
-        );
-
-        string platform;
-        string libSearchPattern;
-        if (Target.Platform == UnrealTargetPlatform.Win64)
-        {
-            platform = "Windows-AMD64-";
-            libSearchPattern = "*.lib";
         }
-        else if (Target.Platform == UnrealTargetPlatform.Mac)
-        {
-            platform = "Darwin-universal-";
-            libSearchPattern = "lib*.a";
-        }
-        else if (Target.Platform == UnrealTargetPlatform.Android)
-        {
-            platform = "Android-aarch64-";
-            libSearchPattern = "lib*.a";
-        }
-        else if (Target.Platform == UnrealTargetPlatform.Linux)
-        {
-            platform = "Linux-x86_64-";
-            libSearchPattern = "lib*.a";
-        }
-        else if(Target.Platform == UnrealTargetPlatform.IOS)
-        {
-            platform = "iOS-ARM64-";
-            libSearchPattern = "lib*.a";
-        }
-        else
-        {
-            throw new InvalidOperationException("Cesium for Unreal does not support this platform.");
-        }
+    );
 
-        string libPathBase = Path.Combine(ModuleDirectory, "../ThirdParty/lib/" + platform);
-        string libPathDebug = libPathBase + "Debug";
-        string libPathRelease = libPathBase + "Release";
+    string platform;
+    string libSearchPattern;
+    if (Target.Platform == UnrealTargetPlatform.Win64)
+    {
+      platform = "Windows-AMD64-";
+      libSearchPattern = "*.lib";
+    }
+    else if (Target.Platform == UnrealTargetPlatform.Mac)
+    {
+      platform = "Darwin-universal-";
+      libSearchPattern = "lib*.a";
+    }
+    else if (Target.Platform == UnrealTargetPlatform.Android)
+    {
+      platform = "Android-aarch64-";
+      libSearchPattern = "lib*.a";
+    }
+    else if (Target.Platform == UnrealTargetPlatform.Linux)
+    {
+      platform = "Linux-x86_64-";
+      libSearchPattern = "lib*.a";
+    }
+    else if (Target.Platform == UnrealTargetPlatform.IOS)
+    {
+      platform = "iOS-ARM64-";
+      libSearchPattern = "lib*.a";
+    }
+    else
+    {
+      throw new InvalidOperationException("Cesium for Unreal does not support this platform.");
+    }
 
-        bool useDebug = false;
-        if (Target.Configuration == UnrealTargetConfiguration.Debug || Target.Configuration == UnrealTargetConfiguration.DebugGame)
+    string libPathBase = Path.Combine(ModuleDirectory, "../ThirdParty/lib/" + platform);
+    string libPathDebug = libPathBase + "Debug";
+    string libPathRelease = libPathBase + "Release";
+
+    bool useDebug = false;
+    if (Target.Configuration == UnrealTargetConfiguration.Debug || Target.Configuration == UnrealTargetConfiguration.DebugGame)
+    {
+      if (Directory.Exists(libPathDebug))
+      {
+        useDebug = true;
+      }
+    }
+
+    string libPath = useDebug ? libPathDebug : libPathRelease;
+
+    string[] allLibs = Directory.Exists(libPath) ? Directory.GetFiles(libPath, libSearchPattern) : new string[0];
+
+    PublicAdditionalLibraries.AddRange(allLibs);
+
+    PublicDependencyModuleNames.AddRange(
+        new string[]
         {
-            if (Directory.Exists(libPathDebug))
-            {
-                useDebug = true;
-            }
-        }
-
-        string libPath = useDebug ? libPathDebug : libPathRelease;
-
-        string[] allLibs = Directory.Exists(libPath) ? Directory.GetFiles(libPath, libSearchPattern) : new string[0];
-
-        PublicAdditionalLibraries.AddRange(allLibs);
-
-        PublicDependencyModuleNames.AddRange(
-            new string[]
-            {
                 "Core",
                 "RHI",
                 "CoreUObject",
@@ -90,25 +90,27 @@ public class CesiumRuntime : ModuleRules
                 "SunPosition",
                 "DeveloperSettings",
                 "UMG",
+                "Json",
+                "JsonUtilities",
                 "Renderer",
                 "OpenSSL"
-            }
-        );
-
-        // Use UE's MikkTSpace on most platforms, except Android and iOS.
-        // On those platforms, UE's isn't available, so we use our own.
-        if (Target.Platform != UnrealTargetPlatform.Android && Target.Platform != UnrealTargetPlatform.IOS)
-        {
-            PrivateDependencyModuleNames.Add("MikkTSpace");
         }
-        else
-        {
-            PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "../ThirdParty/include/mikktspace"));
-        }
+    );
 
-        PublicDefinitions.AddRange(
-            new string[]
-            {
+    // Use UE's MikkTSpace on most platforms, except Android and iOS.
+    // On those platforms, UE's isn't available, so we use our own.
+    if (Target.Platform != UnrealTargetPlatform.Android && Target.Platform != UnrealTargetPlatform.IOS)
+    {
+      PrivateDependencyModuleNames.Add("MikkTSpace");
+    }
+    else
+    {
+      PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "../ThirdParty/include/mikktspace"));
+    }
+
+    PublicDefinitions.AddRange(
+        new string[]
+        {
                 "SPDLOG_COMPILED_LIB",
                 "LIBASYNC_STATIC",
                 "GLM_FORCE_XYZW_ONLY",
@@ -117,37 +119,37 @@ public class CesiumRuntime : ModuleRules
                 "TIDY_STATIC",
                 "URI_STATIC_BUILD",
                 "SWL_VARIANT_NO_CONSTEXPR_EMPLACE"
-            }
-        );
+        }
+    );
 
-        PrivateDependencyModuleNames.Add("Chaos");
+    PrivateDependencyModuleNames.Add("Chaos");
 
-        if (Target.bBuildEditor == true)
-        {
-            PublicDependencyModuleNames.AddRange(
-                new string[] {
+    if (Target.bBuildEditor == true)
+    {
+      PublicDependencyModuleNames.AddRange(
+          new string[] {
                     "UnrealEd",
                     "Slate",
                     "SlateCore",
                     "WorldBrowser",
                     "ContentBrowser",
                     "MaterialEditor"
-                }
-            );
-        }
-
-        DynamicallyLoadedModuleNames.AddRange(
-            new string[]
-            {
-                // ... add any modules that your module loads dynamically here ...
-            }
-        );
-
-        ShadowVariableWarningLevel = WarningLevel.Off;
-        IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_2;
-        PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-
-        CppStandard = CppStandardVersion.Cpp20;
-        bEnableExceptions = true;
+          }
+      );
     }
+
+    DynamicallyLoadedModuleNames.AddRange(
+        new string[]
+        {
+          // ... add any modules that your module loads dynamically here ...
+        }
+    );
+
+    ShadowVariableWarningLevel = WarningLevel.Off;
+    IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_2;
+    PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+
+    CppStandard = CppStandardVersion.Cpp20;
+    bEnableExceptions = true;
+  }
 }

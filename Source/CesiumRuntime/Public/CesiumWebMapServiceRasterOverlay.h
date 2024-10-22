@@ -31,6 +31,9 @@ public:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cesium")
   FString Layers;
 
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cesium")
+  FString Filter;
+
   /**
    * Image width
    */
@@ -51,6 +54,14 @@ public:
       meta = (ClampMin = 64, ClampMax = 2048))
   int32 TileHeight = 256;
 
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  FString GetProperties();
+
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  bool SetProperties(const FString& PropertiesJsonString);
+
+  UFUNCTION(BlueprintCallable, Category = "Cesium")
+  bool SetAttributes(const FString& Attributes);
   /**
    * Minimum zoom level.
    *
