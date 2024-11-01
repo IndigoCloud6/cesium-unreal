@@ -8,16 +8,18 @@
 #include "Cesium3DTilesSelection/Tile.h"
 #include "Cesium3DTilesSelection/TilesetLoadFailureDetails.h"
 #include "Cesium3DTilesSelection/TilesetOptions.h"
+#include "Cesium3DTilesSelection/TilesetSharedAssetSystem.h"
 #include "Cesium3DTilesetLoadFailureDetails.h"
 #include "Cesium3DTilesetRoot.h"
 #include "CesiumActors.h"
+#include "CesiumAsync/SharedAssetDepot.h"
 #include "CesiumBoundingVolumeComponent.h"
 #include "CesiumCamera.h"
 #include "CesiumCameraManager.h"
 #include "CesiumCommon.h"
 #include "CesiumCustomVersion.h"
 #include "CesiumGeospatial/GlobeTransforms.h"
-#include "CesiumGltf/ImageCesium.h"
+#include "CesiumGltf/ImageAsset.h"
 #include "CesiumGltf/Ktx2TranscodeTargets.h"
 #include "CesiumGltfComponent.h"
 #include "CesiumGltfPointsSceneProxyUpdater.h"
@@ -42,6 +44,7 @@
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "ExtensionImageAssetUnreal.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "LevelSequenceActor.h"
@@ -783,16 +786,14 @@ public:
       Cesium3DTilesSelection::TileLoadResult&& tileLoadResult,
       const glm::dmat4& transform,
       const std::any& rendererOptions) override {
-    CesiumGltf::Model* pModel =
-        std::get_if<CesiumGltf::Model>(&tileLoadResult.contentKind);
-    if (!pModel)
+    CreateGltfOptions::CreateModelOptions options(std::move(tileLoadResult));
+    if (!options.pModel) {
       return asyncSystem.createResolvedFuture(
           Cesium3DTilesSelection::TileLoadResultAndRenderResources{
-              std::move(tileLoadResult),
+              std::move(options.tileLoadResult),
               nullptr});
+    }
 
-    CreateGltfOptions::CreateModelOptions options;
-    options.pModel = pModel;
     options.alwaysIncludeTangents = this->_pActor->GetAlwaysIncludeTangents();
     options.createPhysicsMeshes = this->_pActor->GetCreatePhysicsMeshes();
 
@@ -809,16 +810,21 @@ public:
 
     const CesiumGeospatial::Ellipsoid& ellipsoid = tileLoadResult.ellipsoid;
 
-    TUniquePtr<UCesiumGltfComponent::HalfConstructed> pHalf =
-        UCesiumGltfComponent::CreateOffGameThread(
+    CesiumAsync::Future<UCesiumGltfComponent::CreateOffGameThreadResult>
+        pHalfFuture = UCesiumGltfComponent::CreateOffGameThread(
+            asyncSystem,
             transform,
-            options,
+            std::move(options),
             ellipsoid);
 
-    return asyncSystem.createResolvedFuture(
-        Cesium3DTilesSelection::TileLoadResultAndRenderResources{
-            std::move(tileLoadResult),
-            pHalf.Release()});
+    return MoveTemp(pHalfFuture)
+        .thenImmediately(
+            [](UCesiumGltfComponent::CreateOffGameThreadResult&& result)
+                -> Cesium3DTilesSelection::TileLoadResultAndRenderResources {
+              return Cesium3DTilesSelection::TileLoadResultAndRenderResources{
+                  std::move(result.TileLoadResult),
+                  result.HalfConstructed.Release()};
+            });
   }
 
   virtual void* prepareInMainThread(
@@ -864,7 +870,7 @@ public:
   }
 
   virtual void* prepareRasterInLoadThread(
-      CesiumGltf::ImageCesium& image,
+      CesiumGltf::ImageAsset& image,
       const std::any& rendererOptions) override {
     auto ppOptions =
         std::any_cast<FRasterOverlayRendererOptions*>(&rendererOptions);
@@ -877,7 +883,7 @@ public:
 
     if (pOptions->useMipmaps) {
       std::optional<std::string> errorMessage =
-          CesiumGltfReader::GltfReader::generateMipMaps(image);
+          CesiumGltfReader::ImageDecoder::generateMipMaps(image);
       if (errorMessage) {
         UE_LOG(
             LogCesium,
@@ -887,6 +893,21 @@ public:
       }
     }
 
+    // TODO: sRGB should probably be configurable on the raster overlay.
+    bool sRGB = true;
+
+    const ExtensionImageAssetUnreal& extension =
+        ExtensionImageAssetUnreal::getOrCreate(
+            CesiumAsync::AsyncSystem(nullptr), // TODO
+            image,
+            sRGB,
+            pOptions->useMipmaps,
+            std::nullopt);
+
+    // Because raster overlay images are never shared (at least currently!), the
+    // future should already be resolved by the time we get here.
+    check(extension.getFuture().isReady());
+
     auto texture = CesiumTextureUtility::loadTextureAnyThreadPart(
         image,
         TextureAddress::TA_Clamp,
@@ -894,10 +915,9 @@ public:
         pOptions->filter,
         pOptions->useMipmaps,
         pOptions->group,
-        // TODO: sRGB should probably be configurable on the raster overlay.
-        true,
-        std::nullopt,
-        nullptr);
+        sRGB,
+        std::nullopt);
+
     return texture.Release();
   }
 
@@ -955,7 +975,7 @@ public:
     const Cesium3DTilesSelection::TileContent& content = tile.getContent();
     const Cesium3DTilesSelection::TileRenderContent* pRenderContent =
         content.getRenderContent();
-    if (pRenderContent) {
+    if (pMainThreadRendererResources != nullptr && pRenderContent != nullptr) {
       UCesiumGltfComponent* pGltfContent =
           reinterpret_cast<UCesiumGltfComponent*>(
               pRenderContent->getRenderResources());
@@ -985,7 +1005,7 @@ public:
       UCesiumGltfComponent* pGltfContent =
           reinterpret_cast<UCesiumGltfComponent*>(
               pRenderContent->getRenderResources());
-      if (pGltfContent) {
+      if (pMainThreadRendererResources != nullptr && pGltfContent != nullptr) {
         pGltfContent->DetachRasterTile(
             tile,
             rasterTile,
@@ -1938,7 +1958,38 @@ void ACesium3DTileset::updateLastViewUpdateResultState(
     const Cesium3DTilesSelection::ViewUpdateResult& result) {
   TRACE_CPUPROFILER_EVENT_SCOPE(Cesium::updateLastViewUpdateResultState)
 
-  if (!this->LogSelectionStats) {
+  if (this->DrawTileInfo) {
+    const UWorld* World = GetWorld();
+    check(World);
+
+    const TSoftObjectPtr<ACesiumGeoreference> Georeference =
+        ResolveGeoreference();
+    check(Georeference);
+
+    for (Cesium3DTilesSelection::Tile* tile : result.tilesToRenderThisFrame) {
+
+      CesiumGeometry::OrientedBoundingBox obb =
+          Cesium3DTilesSelection::getOrientedBoundingBoxFromBoundingVolume(
+              tile->getBoundingVolume(),
+              Georeference->GetEllipsoid()->GetNativeEllipsoid());
+
+      FVector unrealCenter =
+          Georeference->TransformEarthCenteredEarthFixedPositionToUnreal(
+              VecMath::createVector(obb.getCenter()));
+
+      FString text = FString::Printf(
+          TEXT("ID %s (%p)"),
+          UTF8_TO_TCHAR(
+              Cesium3DTilesSelection::TileIdUtilities::createTileIdString(
+                  tile->getTileID())
+                  .c_str()),
+          tile);
+
+      DrawDebugString(World, unrealCenter, text, nullptr, FColor::Red, 0, true);
+    }
+  }
+
+  if (!this->LogSelectionStats && !this->LogSharedAssetStats) {
     return;
   }
 
@@ -1968,24 +2019,40 @@ void ACesium3DTileset::updateLastViewUpdateResultState(
         result.tilesWaitingForOcclusionResults;
     this->_lastMaxDepthVisited = result.maxDepthVisited;
 
-    UE_LOG(
-        LogCesium,
-        Display,
-        TEXT(
-            "%s: %d ms, Visited %d, Culled Visited %d, Rendered %d, Culled %d, Occluded %d, Waiting For Occlusion Results %d, Max Depth Visited: %d, Loading-Worker %d, Loading-Main %d, Loaded tiles %g%%"),
-        *this->GetName(),
-        (std::chrono::high_resolution_clock::now() - this->_startTime).count() /
-            1000000,
-        result.tilesVisited,
-        result.culledTilesVisited,
-        result.tilesToRenderThisFrame.size(),
-        result.tilesCulled,
-        result.tilesOccluded,
-        result.tilesWaitingForOcclusionResults,
-        result.maxDepthVisited,
-        result.workerThreadTileLoadQueueLength,
-        result.mainThreadTileLoadQueueLength,
-        this->LoadProgress);
+    if (this->LogSelectionStats) {
+      UE_LOG(
+          LogCesium,
+          Display,
+          TEXT(
+              "%s: %d ms, Visited %d, Culled Visited %d, Rendered %d, Culled %d, Occluded %d, Waiting For Occlusion Results %d, Max Depth Visited: %d, Loading-Worker %d, Loading-Main %d, Loaded tiles %g%%"),
+          *this->GetName(),
+          (std::chrono::high_resolution_clock::now() - this->_startTime)
+                  .count() /
+              1000000,
+          result.tilesVisited,
+          result.culledTilesVisited,
+          result.tilesToRenderThisFrame.size(),
+          result.tilesCulled,
+          result.tilesOccluded,
+          result.tilesWaitingForOcclusionResults,
+          result.maxDepthVisited,
+          result.workerThreadTileLoadQueueLength,
+          result.mainThreadTileLoadQueueLength,
+          this->LoadProgress);
+    }
+
+    if (this->LogSharedAssetStats && this->_pTileset) {
+      const Cesium3DTilesSelection::TilesetSharedAssetSystem::ImageDepot&
+          imageDepot = *this->_pTileset->getSharedAssetSystem().pImage;
+      UE_LOG(
+          LogCesium,
+          Display,
+          TEXT(
+              "Images shared asset depot: %d distinct assets, %d inactive assets pending deletion (%d bytes)"),
+          imageDepot.getAssetCount(),
+          imageDepot.getInactiveAssetCount(),
+          imageDepot.getInactiveAssetTotalSizeBytes());
+    }
   }
 }
 

@@ -1,5 +1,21 @@
 # Change Log
 
+### v2.10.0 - 2024-11-01
+
+##### Additions :tada:
+
+- Added `CircumscribedGroundHeight` property to `CesiumSunSky`. It defaults to 0, which is consistent with the previous behavior. It can be set to a larger value (like 40) to avoid dark splotchy artifacts when zoomed out far from the globe in certain tilesets where geometry extends very far beyond the ellipsoid in the low-detail representation, such as Google Photorealistic 3D Tiles.
+- Added a shared assets system that ensures external images referenced by different glTFs will only be loaded once per image. Previously, these images would be loaded again for each glTF that referenced them. This significantly reduces memory usage for tilesets that reuse the same textures.
+
+##### Fixes :wrench:
+
+- Fixed a bug that caused incorrect lighting for tilesets using `KHR_materials_unlit`.
+- Reduced the memory used by tiles with `KHR_materials_unlit`.
+- `CesiumGlobeAnchor` properties are no longer shown on the main `CesiumSunSky` Details panel, because it is almost never necessary to set these. They can still be set on the component's own Details panel if needed.
+- Fixed error messages in the Unreal log about uninitialized fields in `FCesiumSampleHeightResult`.
+
+In addition to the above, this release updates [cesium-native](https://github.com/CesiumGS/cesium-native) from v0.40.1 to v0.41.0. See the [changelog](https://github.com/CesiumGS/cesium-native/blob/main/CHANGES.md) for a complete list of changes in cesium-native.
+
 ### v2.9.0 - 2024-10-01
 
 ##### Additions :tada:
@@ -152,7 +168,7 @@ In addition to the above, this release updates [cesium-native](https://github.co
 
 ##### Additions :tada:
 
- - Added support for multiple Cesium ion servers by creating `CesiumIonServer` data assets.
+- Added support for multiple Cesium ion servers by creating `CesiumIonServer` data assets.
 
 In addition to the above, this release updates [cesium-native](https://github.com/CesiumGS/cesium-native) from v0.30.0 to v0.31.0. See the [changelog](https://github.com/CesiumGS/cesium-native/blob/main/CHANGES.md) for a complete list of changes in cesium-native.
 
@@ -160,8 +176,8 @@ In addition to the above, this release updates [cesium-native](https://github.co
 
 ##### Additions :tada:
 
- - Added support for styling with property textures in `EXT_structural_metadata`.
- - Significantly improved tile download performance by adding `HttpThreadActiveFrameTimeInSeconds=0.001` to `Engine.ini`. This results in a major performance improvement for all tilesets, particularly Google Photorealistic 3D Tiles.
+- Added support for styling with property textures in `EXT_structural_metadata`.
+- Significantly improved tile download performance by adding `HttpThreadActiveFrameTimeInSeconds=0.001` to `Engine.ini`. This results in a major performance improvement for all tilesets, particularly Google Photorealistic 3D Tiles.
 - Added `HttpMaxConnectionsPerServer=40` to `Engine.ini`. By default, only 16 connections are allowed, which limits the performance when downloading tiles.
 
 ##### Fixes :wrench:
@@ -181,7 +197,7 @@ This release no longer supports Unreal Engine v5.0. Unreal Engine v5.1, v5.2, or
 ##### Breaking Changes :mega:
 
 - Removed `FCesiumIntegerColor`, `FCesiumFloatColor`, `UCesiumFeatureTexturePropertyBlueprintLibrary::GetIntegerColorFromTextureCoordinates` and `UCesiumFeatureTexturePropertyBlueprintLibrary::GetFloatColorFromTextureCoordinates`. Check out the [upgrade guide](Documentation/upgrade-to-2.0-guide.md) for how retrieve metadata from property textures with the new API.
-- Renamed `GetTextureCoordinateIndex` to `GetUnrealUVChannel` in both `UCesiumFeatureIdTextureBlueprintLibrary` and `UCesiumPropertyTexturePropertyBlueprintLibrary`. Contrary to what the documentation claimed, this function retrieved the index of the texture coordinate set in the *Unreal static mesh*, which is not necessarily equal to the texture coordinate set index in the *glTF primitive*. For the latter value, use `GetGltfTextureCoordinateSetIndex` instead.
+- Renamed `GetTextureCoordinateIndex` to `GetUnrealUVChannel` in both `UCesiumFeatureIdTextureBlueprintLibrary` and `UCesiumPropertyTexturePropertyBlueprintLibrary`. Contrary to what the documentation claimed, this function retrieved the index of the texture coordinate set in the _Unreal static mesh_, which is not necessarily equal to the texture coordinate set index in the _glTF primitive_. For the latter value, use `GetGltfTextureCoordinateSetIndex` instead.
 - Removed the old "exclusion zones" feature, which has been deprecated since v1.11.0. Use `CesiumCartographicPolygon` or `CesiumTileExcluder` instead.
 
 ##### Additions :tada:
@@ -330,7 +346,7 @@ In addition to the above, this release updates [cesium-native](https://github.co
 ##### Fixes :wrench:
 
 - Added a workaround for an apparent bug in Unreal Engine 5.1 that prevented collisions from working with Cesium3DTilesets.
-- Fixed a bug that could cause the `AGlobeAwareDefaultPawn` / `DynamicPawn`  to suddenly move to a very high height for one render frame just as it arrives at its destination during a flight.
+- Fixed a bug that could cause the `AGlobeAwareDefaultPawn` / `DynamicPawn` to suddenly move to a very high height for one render frame just as it arrives at its destination during a flight.
 
 In addition to the above, this release updates [cesium-native](https://github.com/CesiumGS/cesium-native) from v0.25.0 to v0.25.1. See the [changelog](https://github.com/CesiumGS/cesium-native/blob/main/CHANGES.md) for a complete list of changes in cesium-native.
 
@@ -393,7 +409,7 @@ This will be the _last_ release that supports Unreal Engine v4.27. Future versio
 
 ##### Additions :tada:
 
-- The `FlyToAltitudeProfileCurve`, `FlyToProgressCurve`, `FlyToMaximumAltitudeCurve`, `FlyToDuration`, and `FlyToGranularityDegrees` properties of `GlobeAwareDefaultPawn`  / `DynamicPawn` may now be read and written from Blueprints.
+- The `FlyToAltitudeProfileCurve`, `FlyToProgressCurve`, `FlyToMaximumAltitudeCurve`, `FlyToDuration`, and `FlyToGranularityDegrees` properties of `GlobeAwareDefaultPawn` / `DynamicPawn` may now be read and written from Blueprints.
 - Added an option on `Cesium3DTileset` to ignore the `KHR_materials_unlit` extension entirely and use normal lighting and shadows.
 - Added `CreateNavCollision` property to `Cesium3DTileset`. When enabled, `CreateNavCollision` is called on the static meshes created for tiles.
 
