@@ -4,6 +4,7 @@
 #include "Async/Async.h"
 #include "Camera/CameraTypes.h"
 #include "Camera/PlayerCameraManager.h"
+#include "Cesium3DTilesSelection/EllipsoidTilesetLoader.h"
 #include "Cesium3DTilesSelection/IPrepareRendererResources.h"
 #include "Cesium3DTilesSelection/Tile.h"
 #include "Cesium3DTilesSelection/TilesetLoadFailureDetails.h"
@@ -135,6 +136,12 @@ void ACesium3DTileset::SetMobility(EComponentMobility::Type NewMobility) {
 void ACesium3DTileset::SampleHeightMostDetailed(
     const TArray<FVector>& LongitudeLatitudeHeightArray,
     FCesiumSampleHeightMostDetailedCallback OnHeightsSampled) {
+  // It's possible to call this function before a Tick happens, so make sure
+  // that the necessary variables are resolved.
+  this->ResolveGeoreference();
+  this->ResolveCameraManager();
+  this->ResolveCreditSystem();
+
   if (this->_pTileset == nullptr) {
     this->LoadTileset();
   }
@@ -1277,6 +1284,14 @@ void ACesium3DTileset::LoadTileset() {
   options.contentOptions.applyTextureTransform = false;
 
   switch (this->TilesetSource) {
+  case ETilesetSource::FromEllipsoid:
+    UE_LOG(LogCesium, Log, TEXT("Loading tileset from ellipsoid"));
+    this->_pTileset = TUniquePtr<Cesium3DTilesSelection::Tileset>(
+        Cesium3DTilesSelection::EllipsoidTilesetLoader::createTileset(
+            externals,
+            options)
+            .release());
+    break;
   case ETilesetSource::FromUrl:
     UE_LOG(LogCesium, Log, TEXT("Loading tileset from URL %s"), *this->Url);
     this->_pTileset = MakeUnique<Cesium3DTilesSelection::Tileset>(
@@ -1329,6 +1344,9 @@ void ACesium3DTileset::LoadTileset() {
   }
 
   switch (this->TilesetSource) {
+  case ETilesetSource::FromEllipsoid:
+    UE_LOG(LogCesium, Log, TEXT("Loading tileset from ellipsoid done"));
+    break;
   case ETilesetSource::FromUrl:
     UE_LOG(
         LogCesium,
@@ -1367,6 +1385,9 @@ void ACesium3DTileset::DestroyTileset() {
   }
 
   switch (this->TilesetSource) {
+  case ETilesetSource::FromEllipsoid:
+    UE_LOG(LogCesium, Verbose, TEXT("Destroying tileset from ellipsoid"));
+    break;
   case ETilesetSource::FromUrl:
     UE_LOG(
         LogCesium,
@@ -1417,6 +1438,9 @@ void ACesium3DTileset::DestroyTileset() {
   this->_pTileset.Reset();
 
   switch (this->TilesetSource) {
+  case ETilesetSource::FromEllipsoid:
+    UE_LOG(LogCesium, Verbose, TEXT("Destroying tileset from ellipsoid done"));
+    break;
   case ETilesetSource::FromUrl:
     UE_LOG(
         LogCesium,
@@ -1967,7 +1991,6 @@ void ACesium3DTileset::updateLastViewUpdateResultState(
     check(Georeference);
 
     for (Cesium3DTilesSelection::Tile* tile : result.tilesToRenderThisFrame) {
-
       CesiumGeometry::OrientedBoundingBox obb =
           Cesium3DTilesSelection::getOrientedBoundingBoxFromBoundingVolume(
               tile->getBoundingVolume(),
@@ -2160,9 +2183,6 @@ void ACesium3DTileset::Tick(float DeltaTime) {
   updateTilesetOptionsFromProperties();
 
   std::vector<FCesiumCamera> cameras = this->GetCameras();
-  if (cameras.empty()) {
-    return;
-  }
 
   glm::dmat4 ueTilesetToUeWorld =
       VecMath::createMatrix4D(this->GetActorTransform().ToMatrixWithScale());
